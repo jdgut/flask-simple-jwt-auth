@@ -10,6 +10,8 @@ from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User
 from flask_jwt_simple import JWTManager, create_jwt, jwt_required, get_jwt_identity
+from passlib.hash import sha256_crypt
+
 #from models import Person
 
 
@@ -49,7 +51,7 @@ def login():
     ).one_or_none()
 
     if isinstance(specific_user, User):
-        if specific_user.password == password:
+        if sha256_crypt.verify(password, specific_user.password):
             response = {'jwt': create_jwt(identity=specific_user.id)}
             return jsonify(response), 200
         else:
@@ -61,22 +63,27 @@ def login():
             "msg" : "bad credentials"
         }), 400
 
-
 @app.route('/signup', methods=['POST'])
 def handle_singup():
     input_data = request.json
     
-
     if 'email' in input_data and 'password' in input_data:
         new_user = User(
             email=input_data['email'], 
-            password=input_data['password']
+            password=sha256_crypt.encrypt(str(input_data['password']))
         )
 
         db.session.add(new_user)
         try:
             db.session.commit()
-            return jsonify(new_user.serialize()), 200
+            serialized_user = new_user.serialize()
+            response = {
+                'jwt' : create_jwt(identity=new_user.id),
+                'user_data' : serialized_user
+            }
+
+            return jsonify(response), 200
+
         except Exception as error:
             db.session.rollback()
             return jsonify(
